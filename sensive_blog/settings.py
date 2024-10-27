@@ -1,4 +1,5 @@
 import os
+
 from environs import Env
 
 env = Env()
@@ -6,6 +7,7 @@ env.read_env()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', [])
 
@@ -96,4 +98,5 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 MEDIA_URL = '/media/'
