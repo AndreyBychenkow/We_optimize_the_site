@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django.shortcuts import render
 
 from blog.models import Comment, Post, Tag
@@ -16,7 +17,8 @@ def serialize_post(post):
         'title': post.title,
         'teaser_text': post.text[:200],
         'author': post.author.username,
-        'comments_amount': len(Comment.objects.filter(post=post)),
+        'comments_amount': post.comment_set.count(),
+        'likes_amount': post.likes_count,
         'image_url': post.image.url if post.image else None,
         'published_at': post.published_at,
         'slug': post.slug,
@@ -33,11 +35,15 @@ def serialize_tag(tag):
 
 
 def index(request):
-    all_posts = Post.objects.all()
-    most_popular_posts = sorted(all_posts, key=get_likes_count, reverse=True)[:5]
+    most_popular_posts = (
+        Post.objects.annotate(likes_count=Count('likes'))
+        .order_by('-likes_count')[:5]
+    )
 
-    fresh_posts = Post.objects.order_by('published_at')
-    most_fresh_posts = list(fresh_posts)[-5:]
+    fresh_posts = (
+        Post.objects.annotate(likes_count=Count('likes'))
+        .order_by('-published_at')[:5]
+    )
 
     tags = Tag.objects.all()
     popular_tags = sorted(tags, key=get_related_posts_count)
@@ -47,7 +53,7 @@ def index(request):
         'most_popular_posts': [
             serialize_post(post) for post in most_popular_posts
         ],
-        'page_posts': [serialize_post(post) for post in most_fresh_posts],
+        'page_posts': [serialize_post(post) for post in fresh_posts],
         'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
     }
     return render(request, 'index.html', context)
