@@ -71,10 +71,7 @@ def index(request):
 
 def post_detail(request, slug):
     post = get_object_or_404(
-        Post.objects.annotate(
-            comments_count=Count('comments'),
-            likes_count=Count('likes')
-        ).select_related('author')
+        Post.objects.select_related('author')
         .prefetch_related('comments', Prefetch('tags', queryset=get_tags_with_post_count())),
         slug=slug
     )
@@ -83,7 +80,7 @@ def post_detail(request, slug):
         'text': comment.text,
         'published_at': comment.published_at,
         'author': comment.author.username,
-    } for comment in post.comments.select_related('author').all()]
+    } for comment in post.comments.select_related('author')]
 
     most_popular_tags = get_tags_with_post_count().order_by('-posts_with_tag')[:5]
     most_popular_posts = cache.get('most_popular_posts')
@@ -93,8 +90,8 @@ def post_detail(request, slug):
         'text': post.text,
         'author': post.author.username,
         'comments': serialized_comments,
-        'comments_count': post.comments_count,
-        'likes_amount': post.likes_count,
+        'comments_count': post.comments.count(),
+        'likes_amount': post.likes.count(),
         'image_url': post.image.url if post.image else None,
         'published_at': post.published_at,
         'slug': post.slug,
