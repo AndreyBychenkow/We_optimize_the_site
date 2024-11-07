@@ -1,19 +1,35 @@
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.db import models
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.urls import reverse
 from django.utils import timezone
 
 
 class PostQuerySet(models.QuerySet):
-    def year(self, year):
-        return self.filter(published_at__year=year).order_by('published_at')
-
     def popular(self):
         return self.annotate(likes_count=Count('likes')).order_by('-likes_count')
 
-    def fetch_with_comments_count(self):
-        return self.annotate(comments_count=Count('comments'))
+    def fresh(self):
+        return self.order_by('-published_at')
+
+    def with_comments_and_likes(self):
+        return self.annotate(
+            comments_count=Count('comments'),
+            likes_count=Count('likes')
+        )
+
+    def popular_with_comments_and_tags(self):
+        return self.popular().prefetch_related(
+            Prefetch('tags', queryset=Tag.objects.popular()),
+            'comments'
+        ).select_related('author')
+
+    def fresh_with_comments_and_tags(self):
+        return self.fresh().prefetch_related(
+            Prefetch('tags', queryset=Tag.objects.popular()),
+            'comments'
+        ).select_related('author')
 
 
 class TagQuerySet(models.QuerySet):
@@ -23,13 +39,20 @@ class TagQuerySet(models.QuerySet):
     def popular(self):
         return self.with_post_count().order_by('-posts_with_tag')
 
+    def cached_with_post_count(self):
+        tags = cache.get('tags_with_post_count')
+        if tags is None:
+            tags = self.with_post_count()
+            cache.set('tags_with_post_count', tags, 60 * 15)
+        return tags
+
 
 class Post(models.Model):
     id = models.BigAutoField(primary_key=True)
     title = models.CharField('Заголовок', max_length=200)
     text = models.TextField('Текст')
     slug = models.SlugField('Название в виде url', max_length=200)
-    image = models.ImageField('Картинка')
+    image = models.ImageField('Картинка', null=True, blank=True)
     published_at = models.DateTimeField('Дата и время публикации')
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -56,7 +79,7 @@ class Post(models.Model):
         return self.title
 
     def get_absolute_url(self):
-        return reverse('post_detail', args={'slug': self.slug})
+        return reverse('post_detail', args=[self.slug])
 
     class Meta:
         ordering = ['-published_at']
@@ -77,7 +100,7 @@ class Tag(models.Model):
         self.title = self.title.lower()
 
     def get_absolute_url(self):
-        return reverse('tag_filter', args={'tag_title': self.title})
+        return reverse('tag_filter', args=[self.title])
 
     class Meta:
         ordering = ['title']

@@ -5,14 +5,6 @@ from django.shortcuts import render, get_object_or_404
 from .models import Post, Tag
 
 
-def get_tags_with_post_count():
-    tags = cache.get('tags_with_post_count')
-    if tags is None:
-        tags = Tag.objects.annotate(posts_with_tag=Count('posts')).select_related()
-        cache.set('tags_with_post_count', tags, 60 * 15)
-    return tags
-
-
 def serialize_tag(tag):
     return {
         'title': tag.title,
@@ -59,7 +51,7 @@ def index(request):
         .order_by('-published_at')[:5]
     )
 
-    most_popular_tags = Tag.objects.popular()[:5]
+    most_popular_tags = Tag.objects.cached_with_post_count()[:5]
 
     context = {
         'most_popular_posts': [serialize_post(post) for post in most_popular_posts],
@@ -72,7 +64,7 @@ def index(request):
 def post_detail(request, slug):
     post = get_object_or_404(
         Post.objects.select_related('author')
-        .prefetch_related('comments', Prefetch('tags', queryset=get_tags_with_post_count())),
+        .prefetch_related('comments', Prefetch('tags', queryset=Tag.objects.cached_with_post_count())),
         slug=slug
     )
 
@@ -82,7 +74,7 @@ def post_detail(request, slug):
         'author': comment.author.username,
     } for comment in post.comments.select_related('author')]
 
-    most_popular_tags = get_tags_with_post_count().order_by('-posts_with_tag')[:5]
+    most_popular_tags = Tag.objects.cached_with_post_count().order_by('-posts_with_tag')[:5]
     most_popular_posts = cache.get('most_popular_posts')
 
     serialized_post = {
@@ -107,16 +99,16 @@ def post_detail(request, slug):
 
 
 def tag_filter(request, tag_title):
-    tag = get_object_or_404(get_tags_with_post_count(), title=tag_title)
+    tag = get_object_or_404(Tag.objects.cached_with_post_count(), title=tag_title)
 
     related_posts = tag.posts.annotate(
         comments_count=Count('comments')
     ).select_related('author').prefetch_related(
-        Prefetch('tags', queryset=get_tags_with_post_count())
+        Prefetch('tags', queryset=Tag.objects.cached_with_post_count())
     ).order_by('-published_at')[:20]
 
     most_popular_posts = cache.get('most_popular_posts')
-    most_popular_tags = get_tags_with_post_count().order_by('-posts_with_tag')[:5]
+    most_popular_tags = Tag.objects.cached_with_post_count().order_by('-posts_with_tag')[:5]
 
     context = {
         'tag': tag.title,
